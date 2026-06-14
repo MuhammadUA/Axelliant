@@ -78,7 +78,7 @@ const Pipeline = (() => {
     }
 
     Storage.saveLeadsData(leads);
-    // Write-back to Google Sheets Pipeline tab (fire-and-forget)
+    // Upsert one row per (lead, stage) in Google Sheets Pipeline tab
     GoogleSheets.writePipelineUpdate(lead.id, key, next, ts, lead.name);
     renderDetail(lead);
     ActivityView.renderForLead(lead);

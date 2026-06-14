@@ -149,13 +149,13 @@ const GoogleSheets = (() => {
     }
   }
 
-  // ── WRITE: log pipeline stage change via Apps Script ─────────────
-  async function writePipelineUpdate(leadId, stage, status, timestamp, notes) {
+  // ── WRITE: upsert one row per (leadId, stage) in Pipeline tab ────
+  async function writePipelineUpdate(leadId, stage, status, timestamp, leadName) {
     const scriptUrl = Storage.loadScriptUrl();
     if (!scriptUrl) return; // silent — script not configured yet
 
     try {
-      const qs = new URLSearchParams({ action: 'updatePipeline', leadId, stage, status, timestamp, notes: notes || '' });
+      const qs = new URLSearchParams({ action: 'updatePipeline', leadId, stage, status, timestamp, leadName: leadName || '' });
       await fetch(`${scriptUrl}?${qs}`);
     } catch (e) {
       console.warn('Pipeline write-back failed:', e);
