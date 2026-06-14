@@ -77,7 +77,7 @@ function setupMessages() {
   var headers = [
     'lead_id',              // A — matches Leads.id
     'lead_name',            // B
-    'system_prompt',        // C — the prompt template text used to generate
+    'system_prompt',        // C — prompt template name (title only, not full text)
     'connection_note',      // D — connection request note (≤300 chars)
     'connection_sent_at',   // E
     'msg1',                 // F — 1st message after connection accepted

@@ -181,7 +181,7 @@ const AI = (() => {
       Storage.saveLeadsData(leads);
 
       // Write just this message's content to its column in the sheet
-      GoogleSheets.writeMessage(lead, key, text, prompt.prompt);
+      GoogleSheets.writeMessage(lead, key, text, prompt.name);
 
       ActivityView.renderForLead(lead);
       notify(`✓ ${def.label} generated`);
