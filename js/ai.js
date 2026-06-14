@@ -143,6 +143,7 @@ const AI = (() => {
       });
 
       Storage.saveLeadsData(leads);
+      GoogleSheets.writeMessages(lead);
       ActivityView.renderForLead(lead);
       notify(`✓ ${def.label} generated`);
 
@@ -192,8 +193,10 @@ const AI = (() => {
 
     // Tick corresponding pipeline stage
     if (def.pipeKey && lead.pipeline[def.pipeKey] !== 'done') {
-      lead.pipeline[def.pipeKey]        = 'done';
-      lead.pipeTimestamps[def.pipeKey]  = ts;
+      lead.pipeline[def.pipeKey]       = 'done';
+      lead.pipeTimestamps[def.pipeKey] = ts;
+      // Write pipeline update to sheet
+      GoogleSheets.writePipelineUpdate(lead.id, def.pipeKey, 'done', ts, lead.name);
     }
 
     lead.activity.unshift({
@@ -204,6 +207,10 @@ const AI = (() => {
     });
 
     Storage.saveLeadsData(leads);
+
+    // Write full message sequence to Messages sheet
+    GoogleSheets.writeMessages(lead);
+
     renderSeqList(lead);
     Pipeline.renderDetail(lead);
     ActivityView.renderForLead(lead);

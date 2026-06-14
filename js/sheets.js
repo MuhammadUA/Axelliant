@@ -162,7 +162,35 @@ const GoogleSheets = (() => {
     }
   }
 
+  // ── WRITE: upsert one row per lead in Messages tab ───────────────
+  async function writeMessages(lead) {
+    const scriptUrl = Storage.loadScriptUrl();
+    if (!scriptUrl) return;
+    if (!lead || !lead.messages) return;
+
+    try {
+      const m = lead.messages;
+      const qs = new URLSearchParams({
+        action:              'updateMessages',
+        leadId:              lead.id,
+        leadName:            lead.name || '',
+        connection_note:     m.connection        || '',
+        msg1:                m.msg1              || '',
+        msg2:                m.msg2              || '',
+        msg3:                m.msg3              || '',
+        connection_sent_at:  m.connection_sent_at || '',
+        msg1_sent_at:        m.msg1_sent_at       || '',
+        msg2_sent_at:        m.msg2_sent_at       || '',
+        msg3_sent_at:        m.msg3_sent_at       || '',
+        last_updated:        fmtNow(),
+      });
+      await fetch(`${scriptUrl}?${qs}`);
+    } catch (e) {
+      console.warn('Messages write-back failed:', e);
+    }
+  }
+
   function defaultSheetUrl() { return DEFAULT_URL; }
 
-  return { sync, writePipelineUpdate, extractSheetId, defaultSheetUrl, SHEET_ID };
+  return { sync, writePipelineUpdate, writeMessages, extractSheetId, defaultSheetUrl, SHEET_ID };
 })();
