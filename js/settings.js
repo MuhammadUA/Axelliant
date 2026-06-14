@@ -116,7 +116,9 @@ const Settings = (() => {
     Storage.saveGsConfig(cfg);
     _updateGsBanner(cfg);
     Nav.closeOverlay('gsModal');
-    notify('✓ Google Sheets config saved');
+    _scheduleAutoSync(interval);
+    notify('✓ Google Sheets config saved — syncing…');
+    _syncAndRender();
   }
 
   function _updateGsBanner(cfg) {
@@ -129,10 +131,8 @@ const Settings = (() => {
   }
 
   /* ── Sync ── */
-  function syncNow() {
-    notify('⟳ Syncing from Google Sheets…');
-    document.getElementById('lastSync').textContent = 'just now';
-    setTimeout(() => notify('✓ Sync complete · data refreshed'), 1200);
+  async function syncNow() {
+    await _syncAndRender();
   }
 
   return {
