@@ -16,7 +16,7 @@ const AI = (() => {
   function renderSeqList(lead) {
     const container = document.getElementById('seqList');
     container.innerHTML = SEQ_DEFS.map((s, i) => {
-      const msg   = lead?.messages?.[s.key] || '';
+      const msg    = lead?.messages?.[s.key] || '';
       const sentTs = lead?.messages?.[s.key + '_sent_at'] || '';
       const chars  = msg.length;
 
@@ -63,21 +63,67 @@ const AI = (() => {
     }
   }
 
+  /* ── Build the conversation thread context for a given step ─────
+     Returns the prior messages as labelled context lines so GPT
+     understands the full sequence already sent to this lead.        */
+  function _buildThreadContext(lead, upToKey) {
+    const m = lead.messages || {};
+    const steps = [
+      { key: 'connection', label: 'Connection Note' },
+      { key: 'msg1',       label: 'Step 1' },
+      { key: 'msg2',       label: 'Step 2' },
+      { key: 'msg3',       label: 'Step 3' },
+    ];
+    const lines = [];
+    for (const s of steps) {
+      if (s.key === upToKey) break;
+      if (m[s.key]) {
+        lines.push(`--- ${s.label} (already sent) ---`);
+        lines.push(m[s.key]);
+        lines.push('');
+      }
+    }
+    return lines.join('\n');
+  }
+
+  /* ── Assemble the cumulative thread string written to the sheet ──
+     connection_note  → just the note
+     msg1 column      → Connection Note + Step 1
+     msg2 column      → Connection Note + Step 1 + Step 2
+     msg3 column      → full thread                                   */
+  function _buildSheetThread(lead, upToKey) {
+    const m = lead.messages || {};
+    const steps = [
+      { key: 'connection', label: 'Connection Note' },
+      { key: 'msg1',       label: 'Step 1' },
+      { key: 'msg2',       label: 'Step 2' },
+      { key: 'msg3',       label: 'Step 3' },
+    ];
+    const parts = [];
+    for (const s of steps) {
+      if (m[s.key]) {
+        parts.push(`${s.label}:\n${m[s.key]}`);
+      }
+      if (s.key === upToKey) break;
+    }
+    return parts.join('\n\n');
+  }
+
   /* ── Generate a single message via GPT ── */
   async function generateSingle(key) {
     const lead     = window._currentLead;
     const promptId = document.getElementById('promptSelect').value;
-    if (!promptId)  { notify('⚠ Select a prompt template first'); return; }
+    if (!promptId) { notify('⚠ Select a prompt template first'); return; }
 
     const apiKey = Storage.loadApiKey();
-    if (!apiKey)    { notify('⚠ Add your OpenAI API key in Settings first'); return; }
+    if (!apiKey)   { notify('⚠ Add your OpenAI API key in Settings first'); return; }
 
-    const prompts  = Storage.loadPrompts();
-    const prompt   = prompts.find(p => p.id === promptId);
+    const prompts = Storage.loadPrompts();
+    const prompt  = prompts.find(p => p.id === promptId);
     if (!prompt || !lead) return;
 
-    const def = SEQ_DEFS.find(s => s.key === key);
-    const ta  = document.getElementById('seq-ta-' + key);
+    const def      = SEQ_DEFS.find(s => s.key === key);
+    const ta       = document.getElementById('seq-ta-' + key);
     const statusEl = document.getElementById('seq-status-' + key);
 
     ta.value = '';
@@ -85,16 +131,25 @@ const AI = (() => {
     ta.disabled = true;
     if (statusEl) statusEl.textContent = 'Generating…';
 
+    // Prior messages in the thread (empty string for connection note)
+    const threadCtx = _buildThreadContext(lead, key);
+
     const userMsg = [
-      `Lead Name: ${lead.name}`,
+      '=== Lead Profile ===',
+      `Name: ${lead.name}`,
       `Job Title: ${lead.title}`,
       `Company: ${lead.company}`,
-      `Company About: ${lead.about}`,
+      `Company About: ${lead.about || 'N/A'}`,
       `Profile Summary: ${lead.summary || 'N/A'}`,
       '',
-      `Write a "${def.label}" LinkedIn outreach message.`,
-      `Maximum ${def.maxChars} characters. Be concise and human.`,
-    ].join('\n');
+      threadCtx ? '=== Messages Already Sent ===\n' + threadCtx : '',
+      '=== Your Task ===',
+      `Write ONLY the "${def.label}" message — do not repeat previous messages.`,
+      `Maximum ${def.maxChars} characters. Be concise, human, and specific to this person.`,
+      key === 'connection'
+        ? 'This is a LinkedIn connection request note. Keep it under 300 characters.'
+        : `This is message ${['msg1','msg2','msg3'].indexOf(key) + 1} in the outreach sequence. Reference the prior messages if relevant.`,
+    ].filter(Boolean).join('\n');
 
     try {
       const model = Storage.loadModel();
@@ -123,27 +178,29 @@ const AI = (() => {
       const data = await res.json();
       const text = data.choices[0].message.content.trim();
 
-      ta.value       = text;
-      ta.disabled    = false;
+      ta.value    = text;
+      ta.disabled = false;
       ta.placeholder = '';
       if (!lead.messages) lead.messages = {};
       lead.messages[key] = text;
 
-      // Update char count
       const cc = document.getElementById('cc-' + key);
       if (cc) cc.textContent = `${text.length} / ${def.maxChars}`;
       if (statusEl) statusEl.textContent = 'Generated';
 
-      // Log activity
       lead.activity.unshift({
         icon: '✨', cls: 'ad-ai',
-        title: `AI Message Generated`,
+        title: 'AI Message Generated',
         body:  `${def.label} written by ${model} · prompt: ${prompt.name}`,
         time:  fmtNow(),
       });
 
       Storage.saveLeadsData(leads);
-      GoogleSheets.writeMessage(lead, key, text, prompt.prompt);
+
+      // Write cumulative thread for this column to the sheet
+      const threadForSheet = _buildSheetThread(lead, key);
+      GoogleSheets.writeMessage(lead, key, threadForSheet, prompt.prompt);
+
       ActivityView.renderForLead(lead);
       notify(`✓ ${def.label} generated`);
 
@@ -167,7 +224,7 @@ const AI = (() => {
 
     for (const s of SEQ_DEFS) {
       await generateSingle(s.key);
-      await new Promise(r => setTimeout(r, 500)); // small gap between calls
+      await new Promise(r => setTimeout(r, 500));
     }
 
     if (btn) { btn.disabled = false; btn.textContent = '✨ Generate All'; }
@@ -195,7 +252,6 @@ const AI = (() => {
     if (def.pipeKey && lead.pipeline[def.pipeKey] !== 'done') {
       lead.pipeline[def.pipeKey]       = 'done';
       lead.pipeTimestamps[def.pipeKey] = ts;
-      // Write pipeline update to sheet
       GoogleSheets.writePipelineUpdate(lead.id, def.pipeKey, 'done', ts, lead.name);
     }
 
@@ -208,8 +264,8 @@ const AI = (() => {
 
     Storage.saveLeadsData(leads);
 
-    // Write the sent timestamp for this specific message
-    GoogleSheets.writeMessage(lead, key, lead.messages[key] || '', '', ts);
+    // Write sent timestamp — content stays as the cumulative thread already saved
+    GoogleSheets.writeMessage(lead, key, null, null, ts);
 
     renderSeqList(lead);
     Pipeline.renderDetail(lead);

@@ -163,15 +163,13 @@ const GoogleSheets = (() => {
   }
 
   // ── WRITE: upsert one message column at a time ───────────────────
-  // Called after each individual generate or markSent.
-  // Sends only the specific message key + content to avoid URL-length
-  // corruption that happens when all 4 long messages are sent together.
+  // content = cumulative thread string (null = don't update content)
+  // sentAt  = timestamp string (null = don't update sent_at)
   async function writeMessage(lead, messageKey, content, systemPrompt, sentAt) {
     const scriptUrl = Storage.loadScriptUrl();
     if (!scriptUrl) return;
     if (!lead) return;
 
-    // Map SEQ key → Messages sheet column name
     const COL_MAP = {
       connection: 'connection_note',
       msg1:       'msg1',
@@ -185,11 +183,11 @@ const GoogleSheets = (() => {
       const qs = new URLSearchParams({
         action:       'updateMessage',
         leadId:       lead.id,
-        leadName:     lead.name      || '',
+        leadName:     lead.name    || '',
         colName,
-        content:      content        || '',
-        systemPrompt: systemPrompt   || '',
-        sentAt:       sentAt         || '',
+        content:      content      ?? '',   // null → empty string → script skips overwrite
+        systemPrompt: systemPrompt ?? '',
+        sentAt:       sentAt       ?? '',
         last_updated: fmtNow(),
       });
       await fetch(`${scriptUrl}?${qs}`);
