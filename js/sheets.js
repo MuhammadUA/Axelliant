@@ -207,5 +207,5 @@ const GoogleSheets = (() => {
 
   function defaultSheetUrl() { return DEFAULT_URL; }
 
-  return { sync, writePipelineUpdate, writeMessages, extractSheetId, defaultSheetUrl, SHEET_ID };
+  return { sync, writePipelineUpdate, writeMessage, writeMessages, extractSheetId, defaultSheetUrl, SHEET_ID };
 })();
