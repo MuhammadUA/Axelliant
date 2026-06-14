@@ -8,6 +8,7 @@ const Settings = (() => {
   function render() {
     _renderApiSection();
     _renderGsSection();
+    _updateScriptStatus();
     renderPromptList();
   }
 
@@ -21,6 +22,7 @@ const Settings = (() => {
     document.getElementById('gsUrlInput').value      = cfg.url      || '';
     document.getElementById('gsTabInput').value      = cfg.tab      || 'Leads';
     document.getElementById('gsSyncInterval').value  = cfg.interval || 'Every 60 seconds';
+    document.getElementById('gsScriptUrl').value     = Storage.loadScriptUrl();
   }
 
   /* ── Prompt list ── */
@@ -93,6 +95,20 @@ const Settings = (() => {
     Storage.saveModel(document.getElementById('modelSel').value);
   }
 
+  /* ── Script URL ── */
+  function saveScriptUrl() {
+    Storage.saveScriptUrl(document.getElementById('gsScriptUrl').value);
+    _updateScriptStatus();
+  }
+
+  function _updateScriptStatus() {
+    const url = Storage.loadScriptUrl();
+    const el  = document.getElementById('scriptStatus');
+    if (!el) return;
+    el.textContent = url ? '✓ Write-back enabled' : 'Not configured — read-only mode';
+    el.style.color = url ? 'var(--success)' : 'var(--text-secondary)';
+  }
+
   /* ── GS config ── */
   function saveGsConfig() {
     const cfg = {
@@ -139,6 +155,6 @@ const Settings = (() => {
     render, renderPromptList,
     togglePromptItem, addPrompt, deletePrompt, updateName, updateText,
     saveApiKey, toggleApiKeyVis, saveModel,
-    saveGsConfig, saveGsFromModal, syncNow,
+    saveGsConfig, saveGsFromModal, saveScriptUrl, syncNow,
   };
 })();

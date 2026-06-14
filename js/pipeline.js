@@ -78,6 +78,8 @@ const Pipeline = (() => {
     }
 
     Storage.saveLeadsData(leads);
+    // Write-back to Google Sheets Pipeline tab (fire-and-forget)
+    GoogleSheets.writePipelineUpdate(lead.id, key, next, ts, lead.name);
     renderDetail(lead);
     ActivityView.renderForLead(lead);
     Table.render(leads);

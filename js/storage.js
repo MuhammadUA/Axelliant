@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────
 //  storage.js  —  localStorage persistence layer
 //  All keys prefixed with 'ax_' for easy migration.
-//  Future: swap each function body for an API call.
 // ─────────────────────────────────────────────
 
 const Storage = (() => {
@@ -14,7 +13,6 @@ const Storage = (() => {
   function loadPrompts() {
     const saved = get('ax_prompts');
     if (saved) return saved;
-    // Seed defaults
     const defaults = [
       {
         id: 'p1',
@@ -44,16 +42,20 @@ const Storage = (() => {
   }
   function saveGsConfig(cfg) { set('ax_gs_config', cfg); }
 
+  /* ── Apps Script Web App URL ── */
+  function loadScriptUrl()  { return localStorage.getItem('ax_script_url') || ''; }
+  function saveScriptUrl(v) { localStorage.setItem('ax_script_url', v.trim()); }
+
   /* ── Per-lead mutable data (pipeline, messages, activity) ── */
   function loadLeadsData() { return get('ax_leads_pipeline') || {}; }
   function saveLeadsData(leads) {
     const data = {};
     leads.forEach(l => {
       data[l.id] = {
-        pipeline:        l.pipeline,
-        pipeTimestamps:  l.pipeTimestamps,
-        activity:        l.activity,
-        messages:        l.messages,
+        pipeline:       l.pipeline,
+        pipeTimestamps: l.pipeTimestamps,
+        activity:       l.activity,
+        messages:       l.messages,
       };
     });
     set('ax_leads_pipeline', data);
@@ -68,6 +70,7 @@ const Storage = (() => {
     loadApiKey, saveApiKey,
     loadModel, saveModel,
     loadGsConfig, saveGsConfig,
+    loadScriptUrl, saveScriptUrl,
     loadLeadsData, saveLeadsData,
     loadGlobalActivity, saveGlobalActivity,
   };

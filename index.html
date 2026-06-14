@@ -248,6 +248,24 @@
 
         <hr class="div"/>
 
+        <!-- Apps Script (write-back) -->
+        <div class="settings-section">
+          <h3>Write-back (Apps Script)</h3>
+          <p class="desc">
+            Paste your Google Apps Script Web App URL to enable writing IDs and pipeline updates back to the sheet.
+            <br/>Deploy the script from <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:12px">docs/apps-script.gs</code> in this repo — see instructions at the top of that file.
+          </p>
+          <div class="setting-row">
+            <label>Apps Script URL</label>
+            <input class="setting-input" type="text" id="gsScriptUrl"
+              placeholder="https://script.google.com/macros/s/…/exec"
+              oninput="Settings.saveScriptUrl()"/>
+          </div>
+          <div style="font-size:12px;margin-top:4px" id="scriptStatus">Not configured — read-only mode</div>
+        </div>
+
+        <hr class="div"/>
+
         <!-- Prompt Templates -->
         <div class="settings-section">
           <h3>Prompt Templates</h3>
