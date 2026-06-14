@@ -33,16 +33,43 @@ const GoogleSheets = (() => {
     return result;
   }
 
+  /* Stable slug from name + company — used when the id column is blank */
+  function _slugId(name, company) {
+    return 'gs_' + (name + '_' + company).toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40);
+  }
+
   function parseCSV(text) {
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 1) return [];
     const headers = parseCSVRow(lines[0]).map(h => h.trim());
-    return lines.slice(1).map(line => {
+    return lines.slice(1).map((line, idx) => {
       const vals = parseCSVRow(line);
-      const obj = {};
+      const obj  = {};
       headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
+      // Auto-generate a stable id if the sheet row has none
+      if (!obj.id) obj.id = _slugId(obj.name || '', obj.company_name || '') || ('row_' + (idx + 2));
       return obj;
-    }).filter(r => r.id && r.id.trim());
+    }).filter(r => r.name); // skip completely blank rows
+  }
+
+  /* Map sheet gateway_status values to app display labels */
+  const STATUS_MAP = {
+    'AXELLIANT_PRIORITY_1':    'Hot',
+    'AXELLIANT_PRIORITY_2':    'Hot',
+    'AXELLIANT_QUALIFIED':     'Qualified',
+    'AXELLIANT_WARM':          'Warm',
+    'AXELLIANT_LOW_PRIORITY':  'Cold',
+    'HOT':       'Hot',
+    'WARM':      'Warm',
+    'COLD':      'Cold',
+    'QUALIFIED': 'Qualified',
+    'NEW':       'New',
+  };
+
+  function _mapStatus(raw) {
+    if (!raw) return 'New';
+    const key = raw.toUpperCase().trim();
+    return STATUS_MAP[key] || (STATUS_MAP[raw.trim()] || 'New');
   }
 
   /* ── Map a sheet row → app lead object ── */
@@ -59,7 +86,7 @@ const GoogleSheets = (() => {
       about:       row.company_about || '',
       summary:     row.profile_summary || '',
       score:       score,
-      status:      row.gateway_status || 'New',
+      status:      _mapStatus(row.gateway_status),
       linkedinUrl: row.linkedin_url   || '#',
       landingUrl:  row.landing_page_url || '#',
       avClass:     '',
