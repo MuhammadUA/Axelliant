@@ -4,28 +4,41 @@
 //  DEPLOY STEPS:
 //  1. Open your Google Sheet → Extensions → Apps Script
 //  2. Delete any existing code, paste this entire file
-//  3. Click Deploy → New deployment  (or "Manage deployments" → edit
-//     existing one and pick "New version" to redeploy after edits)
-//  4. Type: Web app
-//  5. Execute as: Me
-//  6. Who has access: Anyone
-//  7. Click Deploy → copy the Web App URL
-//  8. Paste that URL into Settings → Apps Script URL in the dashboard
+//  3. Click Deploy → New deployment
+//     (or Manage deployments → edit → New version to redeploy)
+//  4. Type: Web app  |  Execute as: Me  |  Access: Anyone
+//  5. Copy the Web App URL → paste into dashboard Settings → Apps Script URL
 // ═══════════════════════════════════════════════════════
 
-// Pipeline tab columns (order matters — do not reorder)
-var PIPE_HEADERS = [
-  'lead_id',        // A  — which lead
-  'stage',          // B  — pipeline key (conn_sent, msg1_sent, …)
-  'status',         // C  — current status: pending / active / done
-  'activated_at',   // D  — when first moved to "active"
-  'completed_at',   // E  — when marked "done"
-  'last_updated',   // F  — timestamp of most recent change
-  'lead_name',      // G  — denormalised for readability
+// Pipeline tab: one row per lead, one column per stage timestamp
+var PIPELINE_HEADERS = [
+  'lead_id',           // A — matches Leads.id
+  'lead_name',         // B — denormalised for readability
+  'conn_sent_at',      // C
+  'conn_accepted_at',  // D
+  'msg1_sent_at',      // E
+  'msg1_replied_at',   // F
+  'msg2_sent_at',      // G
+  'msg2_replied_at',   // H
+  'msg3_sent_at',      // I
+  'msg3_replied_at',   // J
+  'last_updated',      // K
 ];
 
+// Map stage key → column header name
+var STAGE_COL = {
+  conn_sent:      'conn_sent_at',
+  conn_accepted:  'conn_accepted_at',
+  msg1_sent:      'msg1_sent_at',
+  msg1_replied:   'msg1_replied_at',
+  msg2_sent:      'msg2_sent_at',
+  msg2_replied:   'msg2_replied_at',
+  msg3_sent:      'msg3_sent_at',
+  msg3_replied:   'msg3_replied_at',
+};
+
 function doGet(e) {
-  const action = (e.parameter && e.parameter.action) || 'getLeads';
+  var action = (e.parameter && e.parameter.action) || 'getLeads';
   try {
     if (action === 'getLeads')       return getLeads();
     if (action === 'assignIds')      return assignIds();
@@ -36,13 +49,13 @@ function doGet(e) {
   }
 }
 
-// ── Read all leads from the Leads tab ──────────────────
+// ── Read all leads from the Leads tab ─────────────────────────────
 function getLeads() {
-  const sheet = getLeadsSheet();
-  const data  = sheet.getDataRange().getValues();
+  var sheet = getLeadsSheet();
+  var data  = sheet.getDataRange().getValues();
   if (data.length < 2) return jsonOk({ ok: true, leads: [] });
 
-  const headers = data[0].map(function(h) { return String(h).trim(); });
+  var headers = data[0].map(function(h) { return String(h).trim(); });
   var leads = data.slice(1)
     .filter(function(row) { return row.some(function(c) { return String(c).trim() !== ''; }); })
     .map(function(row) {
@@ -50,11 +63,10 @@ function getLeads() {
       headers.forEach(function(h, i) { obj[h] = row[i] !== undefined ? String(row[i]) : ''; });
       return obj;
     });
-
   return jsonOk({ ok: true, leads: leads });
 }
 
-// ── Write stable IDs back to any row with blank id column ──
+// ── Write stable IDs into blank id cells in the Leads tab ────────
 function assignIds() {
   var sheet   = getLeadsSheet();
   var data    = sheet.getDataRange().getValues();
@@ -76,93 +88,77 @@ function assignIds() {
       assigned++;
     }
   }
-
   return jsonOk({ ok: true, assigned: assigned });
 }
 
-// ── Upsert one row per (lead_id, stage) in the Pipeline tab ──
+// ── Upsert pipeline row: one row per lead, timestamp per stage ────
 //
-//  params: leadId, stage, status, timestamp, leadName
+//  params: leadId, leadName, stage, status, timestamp
 //
-//  Logic:
-//    • Find existing row where col A = leadId AND col B = stage
-//    • If found  → update status, set activated_at / completed_at
-//      depending on new status, always update last_updated
-//    • If not found → insert a new row with all fields
+//  • Finds row where col A = leadId
+//  • If status === 'done'    → writes timestamp into the stage column
+//  • If status !== 'done'    → clears that stage column (toggled back)
+//  • Always updates last_updated (col K)
+//  • Creates the row if it doesn't exist yet
 function updatePipeline(params) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Pipeline');
 
-  // Create sheet with headers if it doesn't exist
   if (!sheet) {
     sheet = ss.insertSheet('Pipeline');
-    sheet.appendRow(PIPE_HEADERS);
+    var hdrRange = sheet.getRange(1, 1, 1, PIPELINE_HEADERS.length);
+    hdrRange.setValues([PIPELINE_HEADERS]);
+    hdrRange.setFontWeight('bold').setBackground('#4F46E5').setFontColor('#ffffff');
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, PIPE_HEADERS.length)
-         .setFontWeight('bold')
-         .setBackground('#4F46E5')
-         .setFontColor('#ffffff');
+    sheet.setColumnWidth(1, 200);
+    sheet.setColumnWidth(2, 160);
+    for (var c = 3; c <= PIPELINE_HEADERS.length; c++) sheet.setColumnWidth(c, 160);
   }
 
-  var leadId   = params.leadId    || '';
-  var stage    = params.stage     || '';
-  var status   = params.status    || 'pending';
+  var leadId   = params.leadId   || '';
+  var leadName = params.leadName || '';
+  var stage    = params.stage    || '';
+  var status   = params.status   || 'pending';
   var ts       = params.timestamp || new Date().toISOString();
-  var leadName = params.leadName  || params.notes || '';
 
-  // Col indices (1-based for getRange)
-  var COL = { lead_id:1, stage:2, status:3, activated_at:4, completed_at:5, last_updated:6, lead_name:7 };
+  var stageColName = STAGE_COL[stage];
+  if (!stageColName) return jsonOk({ ok: false, error: 'Unknown stage: ' + stage });
 
-  // Search existing rows for this lead+stage pair
-  var data      = sheet.getDataRange().getValues();
-  var foundRow  = -1; // 1-based sheet row
+  var headers     = PIPELINE_HEADERS;
+  var stageColIdx = headers.indexOf(stageColName) + 1; // 1-based
+  var lastUpdCol  = headers.indexOf('last_updated') + 1;
 
+  // Find existing row for this lead
+  var data     = sheet.getDataRange().getValues();
+  var foundRow = -1;
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === leadId && String(data[i][1]) === stage) {
-      foundRow = i + 1; // convert to 1-based
-      break;
-    }
+    if (String(data[i][0]) === leadId) { foundRow = i + 1; break; }
   }
 
   if (foundRow === -1) {
-    // ── INSERT new row ──
-    var newRow = ['', '', '', '', '', '', ''];
-    newRow[COL.lead_id   - 1] = leadId;
-    newRow[COL.stage     - 1] = stage;
-    newRow[COL.status    - 1] = status;
-    newRow[COL.activated_at  - 1] = (status === 'active' || status === 'done') ? ts : '';
-    newRow[COL.completed_at  - 1] = status === 'done' ? ts : '';
-    newRow[COL.last_updated  - 1] = ts;
-    newRow[COL.lead_name - 1] = leadName;
+    // ── INSERT: build a blank row then fill in the known fields ──
+    var newRow = PIPELINE_HEADERS.map(function() { return ''; });
+    newRow[0] = leadId;
+    newRow[1] = leadName;
+    newRow[headers.indexOf('last_updated')] = ts;
+    if (status === 'done') newRow[headers.indexOf(stageColName)] = ts;
     sheet.appendRow(newRow);
   } else {
-    // ── UPDATE existing row ──
-    var existingRow = data[foundRow - 1];
-
-    // Update status
-    sheet.getRange(foundRow, COL.status).setValue(status);
-
-    // Set activated_at on first time it goes active/done (don't overwrite)
-    if ((status === 'active' || status === 'done') && !String(existingRow[COL.activated_at - 1]).trim()) {
-      sheet.getRange(foundRow, COL.activated_at).setValue(ts);
+    // ── UPDATE: write into the specific stage column ──
+    // Update lead_name if it was blank (first time we have the name)
+    if (leadName && !String(data[foundRow - 1][1]).trim()) {
+      sheet.getRange(foundRow, 2).setValue(leadName);
     }
-
-    // Set or clear completed_at
-    if (status === 'done') {
-      sheet.getRange(foundRow, COL.completed_at).setValue(ts);
-    } else {
-      // Toggled back from done — clear completed_at
-      sheet.getRange(foundRow, COL.completed_at).setValue('');
-    }
-
-    // Always update last_updated
-    sheet.getRange(foundRow, COL.last_updated).setValue(ts);
+    // Write or clear the stage timestamp
+    sheet.getRange(foundRow, stageColIdx).setValue(status === 'done' ? ts : '');
+    // Always bump last_updated
+    sheet.getRange(foundRow, lastUpdCol).setValue(ts);
   }
 
   return jsonOk({ ok: true, leadId: leadId, stage: stage, status: status });
 }
 
-// ── Helpers ────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────
 function getLeadsSheet() {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('Leads') || ss.getSheets()[0];
