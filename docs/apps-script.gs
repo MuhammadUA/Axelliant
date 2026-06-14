@@ -4,13 +4,11 @@
 //  DEPLOY STEPS:
 //  1. Open your Google Sheet → Extensions → Apps Script
 //  2. Delete any existing code, paste this entire file
-//  3. Click Deploy → Manage deployments → edit → New version → Deploy
-//     (URL stays the same — no need to update Settings)
+//  3. Deploy → Manage deployments → edit → New version → Deploy
+//     (your existing URL stays the same)
 // ═══════════════════════════════════════════════════════
 
-// ── Pipeline tab schema ───────────────────────────────────────────
-// One row per lead. Timestamp written into the column when stage = done,
-// cleared when toggled back.
+// ── Pipeline tab — one row per lead, one timestamp column per stage ─
 var PIPELINE_HEADERS = [
   'lead_id',           // A
   'lead_name',         // B
@@ -36,21 +34,36 @@ var STAGE_TO_COL = {
   msg3_replied:  'msg3_replied_at',
 };
 
-// ── Messages tab schema ───────────────────────────────────────────
-// One row per lead. Each message type has a content column + sent_at column.
+// ── Messages tab — one row per lead, one column per message ─────────
+// system_prompt stored once per lead (updated on every generate call)
 var MESSAGES_HEADERS = [
   'lead_id',              // A
   'lead_name',            // B
-  'connection_note',      // C — connection request note (≤300 chars)
-  'connection_sent_at',   // D
-  'msg1',                 // E — 1st message
-  'msg1_sent_at',         // F
-  'msg2',                 // G — 2nd message (follow-up 1)
-  'msg2_sent_at',         // H
-  'msg3',                 // I — 3rd message (follow-up 2)
-  'msg3_sent_at',         // J
-  'last_updated',         // K
+  'system_prompt',        // C — the prompt template used
+  'connection_note',      // D — connection request (≤300 chars)
+  'connection_sent_at',   // E
+  'msg1',                 // F — 1st message after connection accepted
+  'msg1_sent_at',         // G
+  'msg2',                 // H — follow-up 1
+  'msg2_sent_at',         // I
+  'msg3',                 // J — follow-up 2
+  'msg3_sent_at',         // K
+  'last_updated',         // L
 ];
+
+// Map the colName param → which column header to write into
+var MSG_CONTENT_COLS = {
+  connection_note: 'connection_note',
+  msg1:            'msg1',
+  msg2:            'msg2',
+  msg3:            'msg3',
+};
+var MSG_SENT_COLS = {
+  connection_note: 'connection_sent_at',
+  msg1:            'msg1_sent_at',
+  msg2:            'msg2_sent_at',
+  msg3:            'msg3_sent_at',
+};
 
 // ─────────────────────────────────────────────────────────────────
 function doGet(e) {
@@ -59,14 +72,14 @@ function doGet(e) {
     if (action === 'getLeads')       return getLeads();
     if (action === 'assignIds')      return assignIds();
     if (action === 'updatePipeline') return updatePipeline(e.parameter);
-    if (action === 'updateMessages') return updateMessages(e.parameter);
+    if (action === 'updateMessage')  return updateMessage(e.parameter);
     return jsonOk({ ok: false, error: 'Unknown action: ' + action });
   } catch (err) {
     return jsonOk({ ok: false, error: err.message });
   }
 }
 
-// ── Read all leads from the Leads tab ─────────────────────────────
+// ── Read all leads ────────────────────────────────────────────────
 function getLeads() {
   var sheet = getLeadsSheet();
   var data  = sheet.getDataRange().getValues();
@@ -84,11 +97,10 @@ function getLeads() {
       });
       return obj;
     });
-
   return jsonOk({ ok: true, leads: leads });
 }
 
-// ── Write stable IDs into blank id cells in the Leads tab ─────────
+// ── Auto-assign IDs to blank id cells ────────────────────────────
 function assignIds() {
   var sheet   = getLeadsSheet();
   var data    = sheet.getDataRange().getValues();
@@ -110,28 +122,26 @@ function assignIds() {
       assigned++;
     }
   }
-
   return jsonOk({ ok: true, assigned: assigned });
 }
 
-// ── Upsert pipeline row: one row per lead, timestamp per stage ─────
+// ── Upsert pipeline: one row per lead, timestamp per stage ────────
 //   params: leadId, leadName, stage, status, timestamp
 function updatePipeline(params) {
   var sheet = getOrCreateSheet('Pipeline', PIPELINE_HEADERS, '#4F46E5');
 
-  var leadId      = params.leadId   || '';
-  var leadName    = params.leadName || '';
-  var stage       = params.stage    || '';
-  var status      = params.status   || 'pending';
+  var leadId      = params.leadId    || '';
+  var leadName    = params.leadName  || '';
+  var stage       = params.stage     || '';
+  var status      = params.status    || 'pending';
   var ts          = params.timestamp || new Date().toISOString();
   var stageColKey = STAGE_TO_COL[stage];
 
   if (!stageColKey) return jsonOk({ ok: false, error: 'Unknown stage: ' + stage });
 
-  var stageColIdx = PIPELINE_HEADERS.indexOf(stageColKey) + 1; // 1-based
+  var stageColIdx = PIPELINE_HEADERS.indexOf(stageColKey) + 1;
   var lastUpdIdx  = PIPELINE_HEADERS.indexOf('last_updated') + 1;
-
-  var foundRow = findRowByLeadId(sheet, leadId);
+  var foundRow    = findRowByLeadId(sheet, leadId);
 
   if (foundRow === -1) {
     var newRow = PIPELINE_HEADERS.map(function() { return ''; });
@@ -141,10 +151,8 @@ function updatePipeline(params) {
     if (status === 'done') newRow[PIPELINE_HEADERS.indexOf(stageColKey)] = ts;
     sheet.appendRow(newRow);
   } else {
-    // Fill lead_name if blank
-    if (leadName) {
-      var existing = sheet.getRange(foundRow, 2).getValue();
-      if (!String(existing).trim()) sheet.getRange(foundRow, 2).setValue(leadName);
+    if (leadName && !String(sheet.getRange(foundRow, 2).getValue()).trim()) {
+      sheet.getRange(foundRow, 2).setValue(leadName);
     }
     sheet.getRange(foundRow, stageColIdx).setValue(status === 'done' ? ts : '');
     sheet.getRange(foundRow, lastUpdIdx).setValue(ts);
@@ -153,75 +161,79 @@ function updatePipeline(params) {
   return jsonOk({ ok: true, leadId: leadId, stage: stage, status: status });
 }
 
-// ── Upsert messages row: one row per lead, content + sent_at per msg
-//   params: leadId, leadName, connection_note, msg1, msg2, msg3,
-//           connection_sent_at, msg1_sent_at, msg2_sent_at, msg3_sent_at,
-//           last_updated
-function updateMessages(params) {
+// ── Upsert one message column at a time ───────────────────────────
+//   params: leadId, leadName, colName, content, systemPrompt,
+//           sentAt, last_updated
+//
+//   colName is one of: connection_note | msg1 | msg2 | msg3
+//   content = the generated message text
+//   sentAt  = timestamp if marking sent, else blank
+function updateMessage(params) {
   var sheet = getOrCreateSheet('Messages', MESSAGES_HEADERS, '#059669');
 
-  var leadId   = params.leadId   || '';
-  var leadName = params.leadName || '';
-  var now      = params.last_updated || new Date().toISOString();
+  var leadId       = params.leadId       || '';
+  var leadName     = params.leadName     || '';
+  var colName      = params.colName      || '';
+  var content      = params.content      || '';
+  var systemPrompt = params.systemPrompt || '';
+  var sentAt       = params.sentAt       || '';
+  var now          = params.last_updated || new Date().toISOString();
+
+  if (!MSG_CONTENT_COLS[colName]) {
+    return jsonOk({ ok: false, error: 'Unknown colName: ' + colName });
+  }
+
+  var contentColIdx = MESSAGES_HEADERS.indexOf(MSG_CONTENT_COLS[colName]) + 1;
+  var sentColIdx    = MESSAGES_HEADERS.indexOf(MSG_SENT_COLS[colName])    + 1;
+  var promptColIdx  = MESSAGES_HEADERS.indexOf('system_prompt')           + 1;
+  var lastUpdIdx    = MESSAGES_HEADERS.indexOf('last_updated')            + 1;
 
   var foundRow = findRowByLeadId(sheet, leadId);
 
-  // Build the full row values in header order
-  function val(key) { return params[key] || ''; }
-
   if (foundRow === -1) {
-    var newRow = [
-      leadId, leadName,
-      val('connection_note'),   val('connection_sent_at'),
-      val('msg1'),              val('msg1_sent_at'),
-      val('msg2'),              val('msg2_sent_at'),
-      val('msg3'),              val('msg3_sent_at'),
-      now,
-    ];
+    // Create a fresh row with only the known fields populated
+    var newRow = MESSAGES_HEADERS.map(function() { return ''; });
+    newRow[0] = leadId;
+    newRow[1] = leadName;
+    newRow[promptColIdx  - 1] = systemPrompt;
+    newRow[contentColIdx - 1] = content;
+    newRow[sentColIdx    - 1] = sentAt;
+    newRow[lastUpdIdx    - 1] = now;
     sheet.appendRow(newRow);
   } else {
-    // Update each field — only overwrite content if non-empty (preserve
-    // existing generated text if the new call omits a message)
-    var updates = [
-      { col: 2,  v: leadName,                    always: false },
-      { col: 3,  v: val('connection_note'),       always: false },
-      { col: 4,  v: val('connection_sent_at'),    always: true  },
-      { col: 5,  v: val('msg1'),                  always: false },
-      { col: 6,  v: val('msg1_sent_at'),          always: true  },
-      { col: 7,  v: val('msg2'),                  always: false },
-      { col: 8,  v: val('msg2_sent_at'),          always: true  },
-      { col: 9,  v: val('msg3'),                  always: false },
-      { col: 10, v: val('msg3_sent_at'),          always: true  },
-      { col: 11, v: now,                          always: true  },
-    ];
-
-    updates.forEach(function(u) {
-      if (u.always || u.v) {
-        sheet.getRange(foundRow, u.col).setValue(u.v);
-      }
-    });
+    // Update lead_name if blank
+    if (leadName && !String(sheet.getRange(foundRow, 2).getValue()).trim()) {
+      sheet.getRange(foundRow, 2).setValue(leadName);
+    }
+    // Always update system_prompt (reflects the latest prompt used)
+    if (systemPrompt) sheet.getRange(foundRow, promptColIdx).setValue(systemPrompt);
+    // Write message content (only overwrite if non-empty)
+    if (content) sheet.getRange(foundRow, contentColIdx).setValue(content);
+    // Write sent timestamp (always — empty string clears it if needed)
+    if (sentAt) sheet.getRange(foundRow, sentColIdx).setValue(sentAt);
+    // Bump last_updated
+    sheet.getRange(foundRow, lastUpdIdx).setValue(now);
   }
 
-  return jsonOk({ ok: true, leadId: leadId });
+  return jsonOk({ ok: true, leadId: leadId, colName: colName });
 }
 
-// ── Shared helpers ─────────────────────────────────────────────────
-
-function getOrCreateSheet(name, headers, headerColor) {
+// ── Helpers ───────────────────────────────────────────────────────
+function getOrCreateSheet(name, headers, color) {
   var ss    = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
-    var hdrRange = sheet.getRange(1, 1, 1, headers.length);
-    hdrRange.setValues([headers]);
-    hdrRange.setFontWeight('bold')
-            .setBackground(headerColor || '#4F46E5')
-            .setFontColor('#ffffff');
+    var r = sheet.getRange(1, 1, 1, headers.length);
+    r.setValues([headers]);
+    r.setFontWeight('bold').setBackground(color || '#4F46E5').setFontColor('#ffffff');
     sheet.setFrozenRows(1);
-    // Auto-size first two columns
     sheet.setColumnWidth(1, 220);
     sheet.setColumnWidth(2, 160);
-    for (var c = 3; c <= headers.length; c++) sheet.setColumnWidth(c, 180);
+    // Wider columns for message content
+    for (var c = 3; c <= headers.length; c++) {
+      sheet.setColumnWidth(c, name === 'Messages' ? 300 : 170);
+    }
   }
   return sheet;
 }
@@ -229,7 +241,7 @@ function getOrCreateSheet(name, headers, headerColor) {
 function findRowByLeadId(sheet, leadId) {
   var data = sheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === leadId) return i + 1; // 1-based
+    if (String(data[i][0]) === leadId) return i + 1;
   }
   return -1;
 }

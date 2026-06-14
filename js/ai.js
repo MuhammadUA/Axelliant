@@ -143,7 +143,7 @@ const AI = (() => {
       });
 
       Storage.saveLeadsData(leads);
-      GoogleSheets.writeMessages(lead);
+      GoogleSheets.writeMessage(lead, key, text, prompt.prompt);
       ActivityView.renderForLead(lead);
       notify(`✓ ${def.label} generated`);
 
@@ -208,8 +208,8 @@ const AI = (() => {
 
     Storage.saveLeadsData(leads);
 
-    // Write full message sequence to Messages sheet
-    GoogleSheets.writeMessages(lead);
+    // Write the sent timestamp for this specific message
+    GoogleSheets.writeMessage(lead, key, lead.messages[key] || '', '', ts);
 
     renderSeqList(lead);
     Pipeline.renderDetail(lead);

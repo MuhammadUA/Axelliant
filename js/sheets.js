@@ -162,31 +162,48 @@ const GoogleSheets = (() => {
     }
   }
 
-  // ── WRITE: upsert one row per lead in Messages tab ───────────────
-  async function writeMessages(lead) {
+  // ── WRITE: upsert one message column at a time ───────────────────
+  // Called after each individual generate or markSent.
+  // Sends only the specific message key + content to avoid URL-length
+  // corruption that happens when all 4 long messages are sent together.
+  async function writeMessage(lead, messageKey, content, systemPrompt, sentAt) {
     const scriptUrl = Storage.loadScriptUrl();
     if (!scriptUrl) return;
-    if (!lead || !lead.messages) return;
+    if (!lead) return;
+
+    // Map SEQ key → Messages sheet column name
+    const COL_MAP = {
+      connection: 'connection_note',
+      msg1:       'msg1',
+      msg2:       'msg2',
+      msg3:       'msg3',
+    };
+    const colName = COL_MAP[messageKey];
+    if (!colName) return;
 
     try {
-      const m = lead.messages;
       const qs = new URLSearchParams({
-        action:              'updateMessages',
-        leadId:              lead.id,
-        leadName:            lead.name || '',
-        connection_note:     m.connection        || '',
-        msg1:                m.msg1              || '',
-        msg2:                m.msg2              || '',
-        msg3:                m.msg3              || '',
-        connection_sent_at:  m.connection_sent_at || '',
-        msg1_sent_at:        m.msg1_sent_at       || '',
-        msg2_sent_at:        m.msg2_sent_at       || '',
-        msg3_sent_at:        m.msg3_sent_at       || '',
-        last_updated:        fmtNow(),
+        action:       'updateMessage',
+        leadId:       lead.id,
+        leadName:     lead.name      || '',
+        colName,
+        content:      content        || '',
+        systemPrompt: systemPrompt   || '',
+        sentAt:       sentAt         || '',
+        last_updated: fmtNow(),
       });
       await fetch(`${scriptUrl}?${qs}`);
     } catch (e) {
-      console.warn('Messages write-back failed:', e);
+      console.warn('Message write-back failed:', e);
+    }
+  }
+
+  // Legacy alias — kept so any direct callers still work
+  async function writeMessages(lead) {
+    if (!lead || !lead.messages) return;
+    const m = lead.messages;
+    for (const key of ['connection', 'msg1', 'msg2', 'msg3']) {
+      if (m[key]) await writeMessage(lead, key, m[key], '', m[key + '_sent_at'] || '');
     }
   }
 
