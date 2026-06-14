@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Axelliant — Lead Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="css/styles.css"/>
+</head>
+<body>
+
+<!-- ═══════════════════════════════
+     SIDEBAR
+═══════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">A</div>
+    <div>
+      <div class="logo-text">Axelliant</div>
+      <div class="logo-sub">Lead Intelligence</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="section-label">Main</div>
+    <button class="nav-item" onclick="showPage('leads')">
+      <span class="nav-icon">👥</span>Leads
+      <span class="nav-badge" id="leadsCountBadge">0</span>
+    </button>
+    <button class="nav-item" onclick="showPage('pipeline-view')">
+      <span class="nav-icon">🔀</span>Pipeline
+    </button>
+    <button class="nav-item" onclick="showPage('dashboard')">
+      <span class="nav-icon">📊</span>Dashboard
+    </button>
+    <button class="nav-item" onclick="showPage('sheet-schema')">
+      <span class="nav-icon">📗</span>Sheet Schema
+    </button>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="section-label">Config</div>
+    <button class="nav-item" onclick="showPage('settings')">
+      <span class="nav-icon">⚙️</span>Settings
+    </button>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="gs-status" onclick="openOverlay('gsModal')">
+      <div class="gs-dot off" id="gsStatusDot"></div>
+      <span id="gsStatusText">Connect Google Sheet</span>
+    </div>
+  </div>
+</aside>
+
+
+<!-- ═══════════════════════════════
+     MAIN CONTENT
+═══════════════════════════════ -->
+<div class="main">
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div>
+      <div class="topbar-title" id="topbarTitle">Leads</div>
+      <div class="topbar-sub">
+        Last synced: <span id="lastSync">—</span> ·
+        <span id="leadCount">0</span> leads
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-outline btn-sm" onclick="Settings.syncNow()">⟳ Sync Now</button>
+      <button class="btn btn-outline btn-sm" onclick="openOverlay('gsModal')">🔗 Sheet Config</button>
+      <button class="btn btn-primary btn-sm" onclick="LeadModal.open(null,'profile')">+ Add Lead</button>
+    </div>
+  </div>
+
+  <!-- Stats Strip -->
+  <div class="stats-strip">
+    <div class="stat-card">
+      <div class="stat-label">Total Leads</div>
+      <div class="stat-value" id="st-total">—</div>
+      <div class="stat-delta">↑ 4 this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Hot Leads</div>
+      <div class="stat-value" id="st-hot">—</div>
+      <div class="stat-delta">↑ 2 from last week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Conn. Sent</div>
+      <div class="stat-value" id="st-sent">—</div>
+      <div class="stat-delta neutral">of total pipeline</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Accept Rate</div>
+      <div class="stat-value" id="st-accept">—</div>
+      <div class="stat-delta">↑ 8% vs last month</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Reply Rate</div>
+      <div class="stat-value" id="st-reply">—</div>
+      <div class="stat-delta down">↓ 3% vs last month</div>
+    </div>
+  </div>
+
+  <!-- Page Content -->
+  <div class="content">
+
+    <!-- ── LEADS PAGE ── -->
+    <div class="page-section" id="page-leads">
+      <div class="gs-banner">
+        <span style="font-size:22px">📗</span>
+        <div class="gs-banner-text">
+          <div class="t">Google Sheets · Live Data Source</div>
+          <div class="s" id="gs-banner-sub">Not connected — click "Sheet Config" to set up</div>
+        </div>
+        <div class="gs-banner-right">
+          <button class="btn btn-outline btn-sm" onclick="openOverlay('gsModal')">Edit Config</button>
+          <button class="btn btn-primary btn-sm" onclick="Settings.syncNow()">⟳ Force Sync</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input class="search-input" type="text" placeholder="Search name, company, title…"
+            oninput="Table.filterByText(this.value)"/>
+        </div>
+        <select class="filter-sel" onchange="Table.filterByStatus(this.value)">
+          <option value="">All Statuses</option>
+          <option>Hot</option><option>Warm</option><option>Cold</option>
+          <option>New</option><option>Qualified</option>
+        </select>
+        <select class="filter-sel" onchange="Table.filterByPipe(this.value)">
+          <option value="">All Pipeline Stages</option>
+          <option>Connection Sent</option>
+          <option>Connection Accepted</option>
+          <option>1st Message Sent</option>
+          <option>Replied</option>
+        </select>
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="Table.exportCSV()">
+          ⬇ Export CSV
+        </button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" onclick="Table.toggleAllCheck(this)"/></th>
+              <th>Person ↕</th>
+              <th>Company ↕</th>
+              <th>Score ↕</th>
+              <th>Status ↕</th>
+              <th>Pipeline</th>
+              <th>Links</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="leadsTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── PIPELINE KANBAN ── -->
+    <div class="page-section" id="page-pipeline-view">
+      <h2 style="font-size:16px;font-weight:700;margin-bottom:18px">Pipeline Overview</h2>
+      <div id="kanbanBoard" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:12px"></div>
+    </div>
+
+    <!-- ── SHEET SCHEMA ── -->
+    <div class="page-section" id="page-sheet-schema">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+        <div>
+          <h2 style="font-size:16px;font-weight:700">Unified Google Sheet Structure</h2>
+          <p style="font-size:13px;color:var(--text-secondary);margin-top:4px">
+            4-tab schema · maps 1:1 to future database tables · <span style="color:var(--primary);font-weight:600">PK</span> = primary key · <span style="color:#059669;font-weight:600">FK</span> = foreign key
+          </p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="SchemaView.downloadTemplate()">⬇ Download Template</button>
+      </div>
+      <div class="schema-wrap" id="schemaWrap"></div>
+    </div>
+
+    <!-- ── DASHBOARD (Activity Feed) ── -->
+    <div class="page-section" id="page-dashboard">
+      <h2 style="font-size:16px;font-weight:700;margin-bottom:18px">Global Activity Timeline</h2>
+      <div class="act-feed" id="globalActivity"
+        style="border:1px solid var(--border);border-radius:var(--r);padding:16px 20px;background:var(--bg)">
+      </div>
+    </div>
+
+    <!-- ── SETTINGS ── -->
+    <div class="page-section" id="page-settings">
+      <h2 style="font-size:16px;font-weight:700;margin-bottom:20px">Settings</h2>
+      <div style="max-width:640px">
+
+        <!-- API -->
+        <div class="settings-section">
+          <h3>OpenAI API</h3>
+          <p class="desc">Your key is stored in your browser only — never sent anywhere except OpenAI.</p>
+          <div class="setting-row">
+            <label>OpenAI API Key</label>
+            <div style="display:flex;gap:8px">
+              <input class="setting-input" type="password" id="apiKeyInput" placeholder="sk-…"
+                style="flex:1" oninput="Settings.saveApiKey()"/>
+              <button class="btn btn-outline btn-sm" onclick="Settings.toggleApiKeyVis()">👁</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>Model</label>
+            <select class="setting-input" id="modelSel" onchange="Settings.saveModel()">
+              <option value="gpt-4o">GPT-4o (Recommended)</option>
+              <option value="gpt-4o-mini">GPT-4o Mini (Faster / cheaper)</option>
+              <option value="gpt-4-turbo">GPT-4 Turbo</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="div"/>
+
+        <!-- Google Sheets -->
+        <div class="settings-section">
+          <h3>Google Sheets</h3>
+          <p class="desc">Configure your live data source. All tabs sync automatically on the set interval.</p>
+          <div class="setting-row">
+            <label>Spreadsheet URL</label>
+            <input class="setting-input" type="text" id="gsUrlInput"
+              placeholder="https://docs.google.com/spreadsheets/d/…" oninput="Settings.saveGsConfig()"/>
+          </div>
+          <div class="setting-row">
+            <label>Leads Tab Name</label>
+            <input class="setting-input" id="gsTabInput" value="Leads" oninput="Settings.saveGsConfig()"/>
+          </div>
+          <div class="setting-row">
+            <label>Sync Interval</label>
+            <select class="setting-input" id="gsSyncInterval" onchange="Settings.saveGsConfig()">
+              <option>Every 30 seconds</option>
+              <option selected>Every 60 seconds</option>
+              <option>Every 5 minutes</option>
+              <option>Manual only</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="div"/>
+
+        <!-- Prompt Templates -->
+        <div class="settings-section">
+          <h3>Prompt Templates</h3>
+          <p class="desc">
+            Create named prompts for AI message generation. When generating messages, the selected prompt is sent
+            as the system message alongside the lead's profile summary and company about.
+            Use <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:12px">{name}</code>,
+            <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:12px">{title}</code>,
+            <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:12px">{company}</code> as variables.
+          </p>
+          <div class="prompt-list" id="promptList"></div>
+          <button class="btn btn-outline btn-sm" onclick="Settings.addPrompt()">+ Add Prompt Template</button>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+
+<!-- ═══════════════════════════════
+     LEAD DETAIL MODAL
+═══════════════════════════════ -->
+<div class="overlay" id="leadModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="avatar" id="m-avatar"
+        style="width:44px;height:44px;font-size:16px;border-radius:10px;flex-shrink:0"></div>
+      <div class="modal-header-info">
+        <h2 id="m-name">—</h2>
+        <p id="m-meta">—</p>
+      </div>
+      <div style="display:flex;gap:8px;margin-left:auto;align-items:center">
+        <span id="m-score-badge" class="score-badge">—</span>
+        <span id="m-status-pill" class="pill">—</span>
+        <button class="modal-close" onclick="closeOverlay('leadModal')">✕</button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div class="mtabs">
+        <div class="mtab active" onclick="switchTab(this,'profile')">Profile</div>
+        <div class="mtab" onclick="switchTab(this,'pipeline')">
+          Pipeline <span id="pipe-done-count" style="font-size:10px;color:var(--text-light)"></span>
+        </div>
+        <div class="mtab" onclick="switchTab(this,'ai')">✨ AI Sequence</div>
+        <div class="mtab" onclick="switchTab(this,'activity')">Activity</div>
+      </div>
+
+      <!-- Profile Tab -->
+      <div class="tab-pane active" id="tab-profile">
+        <div class="field-grid">
+          <div class="field"><div class="field-label">Full Name</div><div class="field-value" id="pf-name">—</div></div>
+          <div class="field"><div class="field-label">Job Title</div><div class="field-value" id="pf-title">—</div></div>
+          <div class="field"><div class="field-label">Company</div><div class="field-value" id="pf-company">—</div></div>
+          <div class="field"><div class="field-label">Gateway Score</div><div class="field-value" id="pf-score">—</div></div>
+          <div class="field"><div class="field-label">Gateway Status</div><div class="field-value" id="pf-status">—</div></div>
+          <div class="field">
+            <div class="field-label">LinkedIn</div>
+            <div class="field-value"><a href="#" id="pf-linkedin" target="_blank">View Profile ↗</a></div>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <div class="field-label">Company About</div>
+            <div class="field-value" id="pf-about">—</div>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <div class="field-label">Profile Summary</div>
+            <div class="field-value" id="pf-summary">—</div>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <div class="field-label">Landing Page</div>
+            <div class="field-value"><a href="#" id="pf-landing" target="_blank">Open Landing Page ↗</a></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="switchTabById('pipeline')">→ View Pipeline</button>
+          <button class="btn btn-ai btn-sm" onclick="switchTabById('ai')">✨ Generate Messages</button>
+        </div>
+      </div>
+
+      <!-- Pipeline Tab -->
+      <div class="tab-pane" id="tab-pipeline">
+        <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:16px">
+          Click any stage card to toggle status. A timestamp is recorded automatically when marked done.
+        </p>
+        <div class="pipe-grid" id="pipeGrid"></div>
+        <div style="border:1px solid var(--border);border-radius:var(--r);padding:14px;background:var(--surface)">
+          <div style="font-size:12.5px;font-weight:600;margin-bottom:10px;color:var(--text)">Stage Log</div>
+          <div id="pipeLog" class="act-feed"></div>
+        </div>
+      </div>
+
+      <!-- AI Sequence Tab -->
+      <div class="tab-pane" id="tab-ai">
+        <div class="prompt-bar">
+          <label>Prompt Template:</label>
+          <select class="prompt-sel" id="promptSelect"></select>
+          <button class="btn btn-outline btn-sm" onclick="showPage('settings');closeOverlay('leadModal')">
+            ⚙ Manage Prompts
+          </button>
+          <button class="btn btn-ai" id="genAllBtn" onclick="AI.generateAll()">✨ Generate All</button>
+        </div>
+        <div class="seq-list" id="seqList"></div>
+      </div>
+
+      <!-- Activity Tab -->
+      <div class="tab-pane" id="tab-activity">
+        <div class="act-feed" id="actFeed"></div>
+      </div>
+
+    </div><!-- /modal-body -->
+  </div><!-- /modal -->
+</div><!-- /leadModal overlay -->
+
+
+<!-- ═══════════════════════════════
+     GOOGLE SHEETS CONFIG MODAL
+═══════════════════════════════ -->
+<div class="overlay" id="gsModal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <span style="font-size:22px;flex-shrink:0">📗</span>
+      <div class="modal-header-info">
+        <h2>Google Sheets Config</h2>
+        <p>Connect your live spreadsheet data source</p>
+      </div>
+      <button class="modal-close" onclick="closeOverlay('gsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="setting-row">
+          <label>Spreadsheet URL</label>
+          <input class="setting-input" id="gsUrlModal" placeholder="https://docs.google.com/spreadsheets/d/…"/>
+        </div>
+        <div class="setting-row">
+          <label>Leads Tab Name</label>
+          <input class="setting-input" id="gsTabModal" value="Leads"/>
+        </div>
+        <div class="setting-row">
+          <label>Sync Interval</label>
+          <select class="setting-input" id="gsIntervalModal">
+            <option>Every 30 seconds</option>
+            <option selected>Every 60 seconds</option>
+            <option>Every 5 minutes</option>
+            <option>Manual only</option>
+          </select>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px">
+          <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px">Column Mapping (Leads tab)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:12px;color:var(--text-secondary)">
+            <span>A → id</span>            <span>B → name</span>
+            <span>C → job_title</span>     <span>D → company_name</span>
+            <span>E → company_about</span> <span>F → gateway_score</span>
+            <span>G → gateway_status</span><span>H → linkedin_url</span>
+            <span>I → landing_page_url</span><span>J → profile_summary</span>
+            <span>K → created_at</span>    <span>L → updated_at</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="btn btn-primary" style="flex:1" onclick="Settings.saveGsFromModal()">Save & Sync</button>
+          <button class="btn btn-outline" onclick="closeOverlay('gsModal')">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════
+     SCRIPTS  (order matters)
+═══════════════════════════════ -->
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/render.js"></script>
+<script src="js/pipeline.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/modal.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
