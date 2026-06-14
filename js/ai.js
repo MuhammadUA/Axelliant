@@ -86,28 +86,6 @@ const AI = (() => {
     return lines.join('\n');
   }
 
-  /* ── Assemble the cumulative thread string written to the sheet ──
-     connection_note  → just the note
-     msg1 column      → Connection Note + Step 1
-     msg2 column      → Connection Note + Step 1 + Step 2
-     msg3 column      → full thread                                   */
-  function _buildSheetThread(lead, upToKey) {
-    const m = lead.messages || {};
-    const steps = [
-      { key: 'connection', label: 'Connection Note' },
-      { key: 'msg1',       label: 'Step 1' },
-      { key: 'msg2',       label: 'Step 2' },
-      { key: 'msg3',       label: 'Step 3' },
-    ];
-    const parts = [];
-    for (const s of steps) {
-      if (m[s.key]) {
-        parts.push(`${s.label}:\n${m[s.key]}`);
-      }
-      if (s.key === upToKey) break;
-    }
-    return parts.join('\n\n');
-  }
 
   /* ── Generate a single message via GPT ── */
   async function generateSingle(key) {
@@ -202,9 +180,8 @@ const AI = (() => {
 
       Storage.saveLeadsData(leads);
 
-      // Write cumulative thread for this column to the sheet
-      const threadForSheet = _buildSheetThread(lead, key);
-      GoogleSheets.writeMessage(lead, key, threadForSheet, prompt.prompt);
+      // Write just this message's content to its column in the sheet
+      GoogleSheets.writeMessage(lead, key, text, prompt.prompt);
 
       ActivityView.renderForLead(lead);
       notify(`✓ ${def.label} generated`);

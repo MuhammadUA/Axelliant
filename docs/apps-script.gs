@@ -67,12 +67,21 @@ var MSG_SENT_COLS = {
 
 // ─────────────────────────────────────────────────────────────────
 function doGet(e) {
-  var action = (e.parameter && e.parameter.action) || 'getLeads';
+  return _handle(e.parameter);
+}
+
+// POST receives application/x-www-form-urlencoded from the dashboard
+function doPost(e) {
+  return _handle(e.parameter);
+}
+
+function _handle(params) {
+  var action = (params && params.action) || 'getLeads';
   try {
     if (action === 'getLeads')       return getLeads();
     if (action === 'assignIds')      return assignIds();
-    if (action === 'updatePipeline') return updatePipeline(e.parameter);
-    if (action === 'updateMessage')  return updateMessage(e.parameter);
+    if (action === 'updatePipeline') return updatePipeline(params);
+    if (action === 'updateMessage')  return updateMessage(params);
     return jsonOk({ ok: false, error: 'Unknown action: ' + action });
   } catch (err) {
     return jsonOk({ ok: false, error: err.message });

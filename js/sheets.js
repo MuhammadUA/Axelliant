@@ -163,12 +163,15 @@ const GoogleSheets = (() => {
   }
 
   // ── WRITE: upsert one message column at a time ───────────────────
-  // content = cumulative thread string (null = don't update content)
-  // sentAt  = timestamp string (null = don't update sent_at)
+  // Uses POST so message content length never hits GET URL limits.
+  // content = message text (null/'' = don't overwrite existing content)
+  // sentAt  = timestamp (null/'' = don't overwrite existing sent_at)
   async function writeMessage(lead, messageKey, content, systemPrompt, sentAt) {
     const scriptUrl = Storage.loadScriptUrl();
     if (!scriptUrl) return;
     if (!lead) return;
+    // Don't create a row for a message that was never generated
+    if (!content && !sentAt) return;
 
     const COL_MAP = {
       connection: 'connection_note',
@@ -179,24 +182,33 @@ const GoogleSheets = (() => {
     const colName = COL_MAP[messageKey];
     if (!colName) return;
 
+    const body = new URLSearchParams({
+      action:       'updateMessage',
+      leadId:       lead.id,
+      leadName:     lead.name    || '',
+      colName,
+      content:      content      || '',
+      systemPrompt: systemPrompt || '',
+      sentAt:       sentAt       || '',
+      last_updated: fmtNow(),
+    });
+
     try {
-      const qs = new URLSearchParams({
-        action:       'updateMessage',
-        leadId:       lead.id,
-        leadName:     lead.name    || '',
-        colName,
-        content:      content      ?? '',   // null → empty string → script skips overwrite
-        systemPrompt: systemPrompt ?? '',
-        sentAt:       sentAt       ?? '',
-        last_updated: fmtNow(),
+      // POST avoids GET URL length limits for long message content.
+      // mode: no-cors because Apps Script doesn't send CORS preflight headers
+      // for cross-origin POST — we don't need to read the response anyway.
+      await fetch(scriptUrl, {
+        method: 'POST',
+        mode:   'no-cors',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
       });
-      await fetch(`${scriptUrl}?${qs}`);
     } catch (e) {
       console.warn('Message write-back failed:', e);
     }
   }
 
-  // Legacy alias — kept so any direct callers still work
+  // Legacy alias
   async function writeMessages(lead) {
     if (!lead || !lead.messages) return;
     const m = lead.messages;
