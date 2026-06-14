@@ -134,21 +134,24 @@ const AI = (() => {
     // Prior messages in the thread (empty string for connection note)
     const threadCtx = _buildThreadContext(lead, key);
 
+    const stepLabels = { connection: 'Connection Note', msg1: '1st Message', msg2: '2nd Message (Follow-up 1)', msg3: '3rd Message (Follow-up 2)' };
+
     const userMsg = [
-      '=== Lead Profile ===',
+      '--- Lead ---',
       `Name: ${lead.name}`,
       `Job Title: ${lead.title}`,
       `Company: ${lead.company}`,
       `Company About: ${lead.about || 'N/A'}`,
       `Profile Summary: ${lead.summary || 'N/A'}`,
       '',
-      threadCtx ? '=== Messages Already Sent ===\n' + threadCtx : '',
-      '=== Your Task ===',
-      `Write ONLY the "${def.label}" message — do not repeat previous messages.`,
-      `Maximum ${def.maxChars} characters. Be concise, human, and specific to this person.`,
+      threadCtx
+        ? '--- Prior messages sent to this lead (for context only — do NOT reproduce them) ---\n' + threadCtx + '\n---'
+        : '',
+      `Write the ${stepLabels[key]} for this lead.`,
       key === 'connection'
-        ? 'This is a LinkedIn connection request note. Keep it under 300 characters.'
-        : `This is message ${['msg1','msg2','msg3'].indexOf(key) + 1} in the outreach sequence. Reference the prior messages if relevant.`,
+        ? 'Max 300 characters. One short paragraph. No subject line, no sign-off.'
+        : `Max ${def.maxChars} characters. No subject line. No labels. No headings. Just the message text, ready to paste and send.`,
+      'Output the message text ONLY — no "Connection Note:", no "Step 1:", no labels of any kind. Start directly with the first word of the message.',
     ].filter(Boolean).join('\n');
 
     try {
@@ -176,7 +179,9 @@ const AI = (() => {
       }
 
       const data = await res.json();
-      const text = data.choices[0].message.content.trim();
+      // Strip any label prefixes GPT might still output (e.g. "Connection Note:\n", "Step 1:\n")
+      const raw  = data.choices[0].message.content.trim();
+      const text = raw.replace(/^(connection note|step\s*\d+|1st message|2nd message|3rd message|follow-up\s*\d*)\s*[:\-–]\s*/i, '').trim();
 
       ta.value    = text;
       ta.disabled = false;
